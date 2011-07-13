@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+require 'yaml'
+require 'choice'                # gem install choice
+require 'smart_colored/extend'  # gem install smart_colored
+require 'json'
+
+# Use choice for the different command line options
+PROGRAM_VERSION = 0.1
+
+# Setup options for terminal
+Choice.options do
+  header ''
+  header 'Required options:'
+
+  option :source_branch, :required => true do
+    short '-s'
+    long '--source=GITHUB_USER:SOURCE_BRANCH'
+    desc 'The branch to merge changes from'
+  end
+  
+  option :issue_number, :required => true do
+    short '-i'
+    long '--issue=ISSUE_NUMBER'
+    desc 'The issue number from Github used to tie the pull request to'
+  end
+  
+  separator ''
+  separator 'Optional options:'
+  
+  option :destination_branch do
+    short '-d'
+    long '--destination=DESTINATION_BRANCH'
+    desc 'The branch to merge changes to'
+  end
+  
+  option :repo do
+    short '-r'
+    long '--repo=GITHUB_REPOSITORY'
+    desc 'The repository to commit to ( ex. smashingboxes/ddtv )'
+  end
+  
+  option :login do
+    short '-u'
+    long '--login=GITHUB_USERNAME:GITHUB_PASSWORD | GITHUB_USERNAME/token:GITHUB_TOKEN'
+    desc 'Your Github login creds'
+  end
+end
+
+#
+# Methods
+def symbolize_keys arg
+  case arg
+  when Array
+    arg.map { |elem| symbolize_keys elem }
+  when Hash
+    Hash[
+      arg.map { |key, value|  
+        k = key.is_a?(String) ? key.to_sym : key
+        v = symbolize_keys value
+        [k,v]
+      }]
+  else
+    arg
+  end
+end
+
+#
+# setup options
+github_user = `git config github.user`.strip
+github_token = `git config github.token`.strip
+
+options ||= { :login => "#{github_user}/token:#{github_token}" }
+options.merge!(YAML.load_file("config/settings.yml"))
+options.merge!(Choice.choices)
+options = symbolize_keys(options)
+
+# issue pull request
+response = `curl -d "pull[base]=#{options[:destination_branch]}" -d "pull[head]=#{options[:source_branch]}" -d "pull[issue]=#{options[:issue_number]}" https://github.com/api/v2/json/pulls/#{options[:repo]} -u "#{options[:login]}"`
+response = JSON.parse(response)
+if response['error']
+  puts "\n#{response['error'].first.red}"
+else
+  puts "\nhttps://github.com/smashingboxes/ddtv/issues/#{options[:issue_number]}".bold_blue
+end
+
+# puts "\n#{response.yellow}"
+puts "\nEnd transmission...".green
